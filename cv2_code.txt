@@ -1,0 +1,81 @@
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Load the image
+image = cv2.imread('/content/IMG-20240825-WA0007.jpg')
+
+# Check if image is loaded properly
+if image is None:
+    raise FileNotFoundError("Image not found. Check the file path.")
+
+# Increase image resolution
+scale_factor = 2  # Scale factor for increasing resolution
+width = int(image.shape[1] * scale_factor)
+height = int(image.shape[0] * scale_factor)
+dim = (width, height)
+resized_image = cv2.resize(image, dim, interpolation=cv2.INTER_CUBIC)
+
+# Convert the resized image to grayscale
+gray = cv2.cvtColor(resized_image, cv2.COLOR_BGR2GRAY)
+
+# Apply Gaussian blur to reduce noise
+blurred = cv2.GaussianBlur(gray, (15, 15), 0)
+
+# Apply adaptive thresholding
+thresholded = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                    cv2.THRESH_BINARY_INV, 11, 2)
+
+# Find contours in the thresholded image
+contours, _ = cv2.findContours(thresholded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+# Filter contours to remove small noise
+min_contour_area = 550  # Adjust based on the size of bulbs
+filtered_contours = [contour for contour in contours if cv2.contourArea(contour) > min_contour_area]
+
+# Initialize lists to store bright spots information
+bright_spots = []
+intensity_values = []
+
+# Set intensity threshold
+intensity_threshold = 10  # Adjust this value based on your needs
+
+# Loop through each filtered contour (each bulb)
+for i, contour in enumerate(filtered_contours):
+    # Create a mask for the current bulb
+    mask = np.zeros_like(gray)
+    cv2.drawContours(mask, [contour], -1, 255, -1)
+
+    # Find the brightest spot in the masked region
+    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(gray, mask=mask)
+
+    # Only consider bright spots above the intensity threshold
+    if max_val >= intensity_threshold:
+        # Add the bright spot info to the list
+        bright_spots.append((max_loc, max_val))
+        intensity_values.append(max_val)
+
+        # Draw the contour of the bulb
+        cv2.drawContours(resized_image, [contour], -1, (0, 255, 0), 2)
+
+        # Draw a small blue dot at the brightest spot
+        cv2.circle(resized_image, max_loc, 5, (255, 0, 0), -1)  # Blue color (BGR format)
+
+        # Display the position of the bright spot with a larger font size and blue color
+        text = f'({max_loc[0]}, {max_loc[1]})'
+        cv2.putText(resized_image, text, (max_loc[0] + 10, max_loc[1] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 0, 0), 2, cv2.LINE_AA)  # Blue color and larger font
+
+# Convert the image from BGR to RGB for displaying with matplotlib
+image_rgb = cv2.cvtColor(resized_image, cv2.COLOR_BGR2RGB)
+
+# Display the result using matplotlib
+plt.figure(figsize=(12, 8))
+plt.imshow(image_rgb)
+plt.title('Detected Bright Spots for Each Bulb')
+plt.axis('off')
+plt.show()
+
+# Print position and intensity for each bright spot
+for idx, (loc, val) in enumerate(bright_spots):
+    print(f'Bulb {idx + 1}: Position: {loc}, Intensity: {val:.2f}')
